@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>CareRoute Prototype Web</title><style>body{font-family:Arial;margin:16px;background:#1f2430;color:#fff}.card{background:#2d3342;padding:12px;border-radius:8px;margin:8px 0}input{width:100%;padding:8px;margin:4px 0}.btn{padding:10px 14px;border-radius:8px;border:0;background:#4fc3f7}.hidden{display:none}</style></head><body>
+<h2>CareRoute Prototype (Web)</h2>
+<div id='welcome' class='card'><button class='btn' onclick='showSignIn()'>Sign In</button> <button class='btn' onclick='showRegister()'>Register New User</button></div>
+<div id='signin' class='card hidden'><h3>Sign In</h3><input id='se' value='alicebob@email.com'/><input id='sp' value='demo123'/><button class='btn' onclick='gotoMain()'>Sign In</button></div>
+<div id='register' class='card hidden'><h3>Register Identity</h3><input id='fn' value='Alice'/><input id='ln' value='Boberson'/><input id='dob' value='04-17-1976'/><input id='em' value='alicebob@email.com'/><input id='ph' value='867-5309'/><h3>Insurance</h3><input id='st' value='CA'/><input id='ins' value='DemoShield Health'/><input id='mid' value='DSH-004291'/><h3>Medical</h3><input id='alg' value='Penicillin'/><input id='med' value='Lisinopril'/><label><input type='checkbox'/> Privacy notice</label><br/><label><input type='checkbox'/> Terms of use</label><br/><button class='btn' onclick='submitRegister()'>Complete Registration</button></div>
+<div id='main' class='card hidden'><h3>Main Emergency Screen</h3><button class='btn' style='width:220px;height:220px;border-radius:999px;font-size:24px' onclick='route()'>CALL FOR HELP</button><div id='routeStatus'></div></div>
+<script>
+const API_BASE = localStorage.getItem('careroute_api_base') || 'http://127.0.0.1:8120';
+function hideAll(){['signin','register','main'].forEach(id=>document.getElementById(id).classList.add('hidden'));}
+function showSignIn(){hideAll();document.getElementById('signin').classList.remove('hidden');}
+function showRegister(){hideAll();document.getElementById('register').classList.remove('hidden');}
+function gotoMain(){hideAll();document.getElementById('main').classList.remove('hidden');}
+async function submitRegister(){const payload={type:'registration',firstName:fn.value,lastName:ln.value,dob:dob.value,email:em.value,phone:ph.value,state:st.value,insurance:ins.value,memberId:mid.value,allergies:alg.value,medications:med.value,timestamp:Date.now()};try{await fetch(API_BASE+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}catch(e){} gotoMain();}
+function route(){const el=document.getElementById('routeStatus');el.innerText='Care Agent finding route...';setTimeout(()=>el.innerText='Found: Unit A-12, Coastal Neuro Care, ETA pickup 12 min, total $2350',2000);}
+</script></body></html>
