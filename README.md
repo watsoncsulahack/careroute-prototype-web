@@ -1,13 +1,22 @@
 # CareRoute Prototype Web
 
-- Web prototype: `index.html`
-- Live monitor: `monitor.html`
+Web parity prototype for the Android CareRoute demo flow.
 
-## Online live mode
+## Live URLs
+- Web app (Try Demo): `https://watsoncsulahack.github.io/careroute-prototype-web/`
+- Live monitor: `https://watsoncsulahack.github.io/careroute-prototype-web/monitor.html`
+- Landing page: `https://watsoncsulahack.github.io/careroute-landing-page/`
 
-For full write/read parity (registration writes + monitor reads) without CORS issues,
-serve this UI as Cloudant design-doc attachments and open it on the Cloudant host origin.
+## Included parity flow
+- O01 Welcome/Auth
+- O02 Sign In
+- O03 Register Identity
+- O04 Register Insurance
+- O05 Medical + Consent (**merged screen 5+6**)
+- M01 Big round CALL FOR HELP
+- M02 Auto loading (2s)
+- M03 Route found summary
+- M04 Merged map + dispatch summary (screen 7 removed)
 
-Cloudant public demo URL (current deployment):
-- `https://7d5f26cb-f87a-493c-b84f-7d1357a2f9b3-bluemix.cloudantnosqldb.appdomain.cloud/careroute_demo_live/_design/web/index.html`
-- monitor: `https://7d5f26cb-f87a-493c-b84f-7d1357a2f9b3-bluemix.cloudantnosqldb.appdomain.cloud/careroute_demo_live/_design/web/monitor.html`
+## Online registration writes
+Web app writes registrations to Cloudant via update-handler form POST fallback, and monitor reads records using online fetch/JSONP paths.

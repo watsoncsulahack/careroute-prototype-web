@@ -54,7 +54,7 @@ function dbBase() {
 function modeText(){
   if (sameOriginCloudantMode()) return 'Live mode: Cloudant online write/read enabled.';
   if (localBridge) return `Bridge mode: ${localBridge}`;
-  return 'Read-only web mode. For full online writes, open Cloudant-hosted demo URL.';
+  return 'Online mode: cross-site form submit to Cloudant update endpoint + live monitor.';
 }
 
 document.getElementById('mode').textContent = modeText();
@@ -142,8 +142,30 @@ async function saveRegistration(){
       return true;
     }
 
-    alert('Read-only mode here. Open Cloudant-hosted demo URL for live registration writes.');
-    return false;
+    // Public online fallback for GitHub Pages:
+    // submit cross-origin form POST to Cloudant update handler (no CORS preflight)
+    const iframe = document.createElement('iframe');
+    iframe.name = 'careroute_post_target';
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.target = 'careroute_post_target';
+    form.action = `https://${cloudantHost}/${dbName}/_design/web/_update/register`;
+
+    Object.entries(payload).forEach(([k,v]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = k;
+      input.value = String(v ?? '');
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(() => { form.remove(); iframe.remove(); }, 1200);
+    return true;
   } catch (e) {
     alert(`Registration write failed: ${e.message}`);
     return false;
