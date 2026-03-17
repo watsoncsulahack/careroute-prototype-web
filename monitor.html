@@ -15,7 +15,8 @@
 <body>
 <div class="wrap">
   <h2 style="margin:0 0 8px">CareRoute Live Registrations</h2>
-  <p id="status" class="muted">Loading...</p>
+  <p class="muted" style="margin:0 0 4px">Build: 2026-03-17-r3</p>
+  <p id="status" class="muted">Connecting...</p>
   <table>
     <thead><tr><th>Time</th><th>Name</th><th>Email</th><th>Insurance</th><th>Source</th></tr></thead>
     <tbody id="rows"></tbody>
@@ -26,13 +27,22 @@
 const cloudantHost = '7d5f26cb-f87a-493c-b84f-7d1357a2f9b3-bluemix.cloudantnosqldb.appdomain.cloud';
 const dbName = 'careroute_demo_live';
 const localBridge = localStorage.getItem('careroute_api_base') || '';
+const cloudantBase = `https://${cloudantHost}/${dbName}`;
 
-function sameOriginCloudantMode() { return location.hostname === cloudantHost; }
-function cloudantDocsUrl() {
-  return `https://${cloudantHost}/${dbName}/_all_docs?include_docs=true&descending=true&limit=200`;
-}
+const state = {
+  rowsById: new Map(),
+  lastSeq: '0',
+  startedAt: Date.now()
+};
 
-function renderRows(rows){
+function status(s){ document.getElementById('status').textContent = s; }
+
+function renderRows(){
+  const rows = [...state.rowsById.values()]
+    .filter(Boolean)
+    .sort((a,b)=>(b.timestamp||0)-(a.timestamp||0))
+    .slice(0, 250);
+
   document.getElementById('rows').innerHTML = rows.map(d => `
     <tr>
       <td>${new Date(d.timestamp || Date.now()).toLocaleTimeString()}</td>
@@ -41,59 +51,87 @@ function renderRows(rows){
       <td>${d.insurance||''}</td>
       <td>${d.source||'unknown'}</td>
     </tr>`).join('');
+
+  const age = Math.floor((Date.now() - state.startedAt)/1000);
+  status(`Live stream active. Records: ${rows.length}. Running ${age}s.`);
 }
 
-function normalizeFromAllDocs(payload){
-  const docs = (payload.rows || []).map(r => r.doc).filter(Boolean);
-  return docs.filter(d => d.type === 'registration').sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+function upsertDoc(doc){
+  if(!doc || doc.type !== 'registration') return;
+  const key = doc._id || `${doc.email||'unknown'}:${doc.timestamp||Date.now()}`;
+  state.rowsById.set(key, doc);
 }
 
-function loadViaJsonp(){
+function jsonp(url){
   return new Promise((resolve, reject) => {
-    const cb = '__careroute_jsonp_' + Date.now();
+    const cb = '__careroute_jsonp_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+    const script = document.createElement('script');
     window[cb] = (payload) => {
-      try {
-        const rows = normalizeFromAllDocs(payload);
-        resolve(rows);
-      } finally {
+      try { resolve(payload); }
+      finally {
         delete window[cb];
         script.remove();
       }
     };
-    const script = document.createElement('script');
-    script.src = `${cloudantDocsUrl()}&callback=${cb}`;
-    script.onerror = () => { delete window[cb]; reject(new Error('JSONP load failed')); };
+    script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${cb}&_=${Date.now()}`;
+    script.onerror = () => {
+      delete window[cb];
+      script.remove();
+      reject(new Error('JSONP request failed'));
+    };
     document.head.appendChild(script);
   });
 }
 
-async function load(){
+async function bootstrapFromSnapshot(){
+  const payload = await jsonp(`${cloudantBase}/_all_docs?include_docs=true&descending=true&limit=250&update_seq=true`);
+  (payload.rows || []).forEach(r => upsertDoc(r.doc));
+  if(payload.update_seq) state.lastSeq = payload.update_seq;
+  renderRows();
+}
+
+async function pollChangesJsonp(){
   try {
-    let rows = [];
-
-    if (sameOriginCloudantMode()) {
-      const r = await fetch(`/${dbName}/_all_docs?include_docs=true&descending=true&limit=200`);
-      const j = await r.json();
-      rows = normalizeFromAllDocs(j);
-      document.getElementById('status').textContent = `Live mode (Cloudant origin). Records: ${rows.length}. Refresh: 2s`;
-    } else if (localBridge) {
-      const r = await fetch(`${localBridge}/api/registrations`);
-      const j = await r.json();
-      rows = (j.rows || []).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
-      document.getElementById('status').textContent = `Bridge mode (${localBridge}). Records: ${rows.length}. Refresh: 2s`;
-    } else {
-      rows = await loadViaJsonp();
-      document.getElementById('status').textContent = `Online mode (Cloudant JSONP). Records: ${rows.length}. Refresh: 2s`;
-    }
-
-    renderRows(rows);
+    const since = encodeURIComponent(state.lastSeq || 'now');
+    const payload = await jsonp(`${cloudantBase}/_changes?since=${since}&feed=longpoll&timeout=25000&heartbeat=10000&include_docs=true`);
+    (payload.results || []).forEach(c => upsertDoc(c.doc));
+    if(payload.last_seq) state.lastSeq = payload.last_seq;
+    renderRows();
+    setTimeout(pollChangesJsonp, 60);
   } catch (e) {
-    document.getElementById('status').textContent = `Monitor error: ${e.message}`;
+    status(`Reconnect after error: ${e.message}`);
+    setTimeout(pollChangesJsonp, 900);
   }
 }
 
-load();
-setInterval(load, 2000);
+async function pollBridgeFast(){
+  try {
+    const r = await fetch(`${localBridge}/api/registrations?_=${Date.now()}`, { cache: 'no-store' });
+    const j = await r.json();
+    state.rowsById.clear();
+    (j.rows || []).forEach(upsertDoc);
+    renderRows();
+  } catch (e) {
+    status(`Bridge monitor error: ${e.message}`);
+  }
+  setTimeout(pollBridgeFast, 700);
+}
+
+(async function start(){
+  try {
+    if(localBridge){
+      status(`Bridge mode (${localBridge})`);
+      await pollBridgeFast();
+      return;
+    }
+
+    // Cloudant JSONP stream mode (works from GitHub Pages and Cloudant-hosted page)
+    await bootstrapFromSnapshot();
+    pollChangesJsonp();
+  } catch (e) {
+    status(`Monitor failed to start: ${e.message}`);
+  }
+})();
 </script>
 </body>
 </html>
