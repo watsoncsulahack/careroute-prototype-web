@@ -1,15 +1,277 @@
-<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>CareRoute Prototype Web</title><style>body{font-family:Arial;margin:16px;background:#1f2430;color:#fff}.card{background:#2d3342;padding:12px;border-radius:8px;margin:8px 0}input{width:100%;padding:8px;margin:4px 0}.btn{padding:10px 14px;border-radius:8px;border:0;background:#4fc3f7}.hidden{display:none}</style></head><body>
-<h2>CareRoute Prototype (Web)</h2>
-<div id='welcome' class='card'><button class='btn' onclick='showSignIn()'>Sign In</button> <button class='btn' onclick='showRegister()'>Register New User</button></div>
-<div id='signin' class='card hidden'><h3>Sign In</h3><input id='se' value='alicebob@email.com'/><input id='sp' value='demo123'/><button class='btn' onclick='gotoMain()'>Sign In</button></div>
-<div id='register' class='card hidden'><h3>Register Identity</h3><input id='fn' value='Alice'/><input id='ln' value='Boberson'/><input id='dob' value='04-17-1976'/><input id='em' value='alicebob@email.com'/><input id='ph' value='867-5309'/><h3>Insurance</h3><input id='st' value='CA'/><input id='ins' value='DemoShield Health'/><input id='mid' value='DSH-004291'/><h3>Medical</h3><input id='alg' value='Penicillin'/><input id='med' value='Lisinopril'/><label><input type='checkbox'/> Privacy notice</label><br/><label><input type='checkbox'/> Terms of use</label><br/><button class='btn' onclick='submitRegister()'>Complete Registration</button></div>
-<div id='main' class='card hidden'><h3>Main Emergency Screen</h3><button class='btn' style='width:220px;height:220px;border-radius:999px;font-size:24px' onclick='route()'>CALL FOR HELP</button><div id='routeStatus'></div></div>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CareRoute Prototype Web</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#171b24; color:#fff; margin:0; padding:16px; }
+    .shell { max-width: 760px; margin: 0 auto; }
+    .card { background:#252c3b; border-radius:12px; padding:14px; margin:10px 0; }
+    .muted { color:#cbd5e1; font-size:13px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input, .link { width:100%; padding:10px; margin:4px 0; border-radius:8px; border:1px solid #3f4a61; background:#101520; color:#fff; box-sizing:border-box; }
+    .btn { border:0; border-radius:10px; padding:10px 14px; background:#38bdf8; color:#00141f; font-weight:700; cursor:pointer; }
+    .btn.secondary { background:#3b465d; color:#fff; }
+    .hidden { display:none; }
+    .big-call { width:240px; height:240px; border-radius:999px; font-size:26px; display:block; margin:12px auto; background:#ef4444; color:#fff; }
+    .map { white-space:pre-line; background:#101520; border:1px dashed #64748b; border-radius:10px; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .step-title { font-size:20px; margin:0 0 8px; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .topbar a { color:#7dd3fc; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <h2 style="margin:0">CareRoute Prototype</h2>
+      <a href="./monitor.html" target="_blank" rel="noopener">Open Live Monitor</a>
+    </div>
+    <p id="mode" class="muted"></p>
+
+    <div id="screen" class="card">
+      <p id="progress" class="muted"></p>
+      <h3 id="title" class="step-title"></h3>
+      <div id="content"></div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn secondary" id="backBtn">Back</button>
+        <button class="btn secondary" id="nextBtn">Next</button>
+      </div>
+    </div>
+  </div>
+
 <script>
-const API_BASE = localStorage.getItem('careroute_api_base') || 'http://127.0.0.1:8120';
-function hideAll(){['signin','register','main'].forEach(id=>document.getElementById(id).classList.add('hidden'));}
-function showSignIn(){hideAll();document.getElementById('signin').classList.remove('hidden');}
-function showRegister(){hideAll();document.getElementById('register').classList.remove('hidden');}
-function gotoMain(){hideAll();document.getElementById('main').classList.remove('hidden');}
-async function submitRegister(){const payload={type:'registration',firstName:fn.value,lastName:ln.value,dob:dob.value,email:em.value,phone:ph.value,state:st.value,insurance:ins.value,memberId:mid.value,allergies:alg.value,medications:med.value,timestamp:Date.now()};try{await fetch(API_BASE+'/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});}catch(e){} gotoMain();}
-function route(){const el=document.getElementById('routeStatus');el.innerText='Care Agent finding route...';setTimeout(()=>el.innerText='Found: Unit A-12, Coastal Neuro Care, ETA pickup 12 min, total $2350',2000);}
-</script></body></html>
+const cloudantHost = '7d5f26cb-f87a-493c-b84f-7d1357a2f9b3-bluemix.cloudantnosqldb.appdomain.cloud';
+const dbName = 'careroute_demo_live';
+const localBridge = localStorage.getItem('careroute_api_base') || '';
+
+function sameOriginCloudantMode() {
+  return location.hostname === cloudantHost;
+}
+function dbBase() {
+  return `https://${cloudantHost}/${dbName}`;
+}
+function modeText(){
+  if (sameOriginCloudantMode()) return 'Live mode: Cloudant online write/read enabled.';
+  if (localBridge) return `Bridge mode: ${localBridge}`;
+  return 'Read-only web mode. For full online writes, open Cloudant-hosted demo URL.';
+}
+
+document.getElementById('mode').textContent = modeText();
+
+const flowSignIn = ['O01','O02','M01','M02','M03','M04'];
+const flowRegister = ['O01','O03','O04','O05','M01','M02','M03','M04']; // O05 merges old screen 5+6
+let flow = flowSignIn;
+let step = 0;
+
+const data = {
+  firstName: 'Alice',
+  lastName: 'Boberson',
+  dob: '04-17-1976',
+  email: 'alicebob@email.com',
+  phone: '867-5309',
+  state: 'CA',
+  insurance: 'DemoShield Health',
+  memberId: 'DSH-004291',
+  groupNumber: 'GRP-7781',
+  address: '123 Demo Ave, Los Angeles, CA',
+  allergies: 'Penicillin',
+  medications: 'Lisinopril',
+  conditions: 'Hypertension',
+  pcp: 'Dr. Rivera'
+};
+
+const el = (id) => document.getElementById(id);
+
+function controls() {
+  el('backBtn').disabled = step === 0;
+  el('nextBtn').textContent = step === flow.length - 1 ? 'Restart' : 'Next';
+}
+
+function setStep(newStep){ step = newStep; render(); }
+
+function formInput(key, label){
+  return `<label class='muted'>${label}</label><input value="${data[key]||''}" data-key="${key}" />`;
+}
+
+function bindInputs(){
+  document.querySelectorAll('[data-key]').forEach(i => {
+    i.addEventListener('input', () => data[i.dataset.key] = i.value);
+  });
+}
+
+async function saveRegistration(){
+  const payload = {
+    type: 'registration',
+    timestamp: Date.now(),
+    firstName: data.firstName,
+    lastName: data.lastName,
+    dob: data.dob,
+    email: data.email,
+    phone: data.phone,
+    state: data.state,
+    insurance: data.insurance,
+    memberId: data.memberId,
+    groupNumber: data.groupNumber,
+    address: data.address,
+    allergies: data.allergies,
+    medications: data.medications,
+    conditions: data.conditions,
+    pcp: data.pcp,
+    source: 'web-prototype'
+  };
+
+  try {
+    if (sameOriginCloudantMode()) {
+      const r = await fetch(`/${dbName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) throw new Error(`Cloudant ${r.status}`);
+      return true;
+    }
+
+    if (localBridge) {
+      const r = await fetch(`${localBridge}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) throw new Error(`Bridge ${r.status}`);
+      return true;
+    }
+
+    alert('Read-only mode here. Open Cloudant-hosted demo URL for live registration writes.');
+    return false;
+  } catch (e) {
+    alert(`Registration write failed: ${e.message}`);
+    return false;
+  }
+}
+
+function render(){
+  const id = flow[step];
+  el('progress').textContent = `Screen ${step+1}/${flow.length}`;
+  controls();
+
+  let title = id;
+  let html = '';
+
+  if (id === 'O01') {
+    title = 'Welcome / Auth';
+    html = `<p class='muted'>Choose Sign In or Register New User.</p>
+      <div class='row'>
+        <button class='btn' id='signIn'>Sign In</button>
+        <button class='btn' id='register'>Register New User</button>
+      </div>`;
+  }
+
+  if (id === 'O02') {
+    title = 'Sign In';
+    html = `${formInput('email','Email')}${formInput('phone','Password (demo)')}
+      <button class='btn' id='doSignIn'>Sign In</button>`;
+  }
+
+  if (id === 'O03') {
+    title = 'Register Identity';
+    html = `${formInput('firstName','First Name')}${formInput('lastName','Last Name')}${formInput('dob','DOB')}${formInput('email','Email')}${formInput('phone','Phone')}`;
+  }
+
+  if (id === 'O04') {
+    title = 'Register Insurance';
+    html = `${formInput('state','State')}${formInput('insurance','Insurance')}${formInput('memberId','Member ID')}${formInput('groupNumber','Group Number')}${formInput('address','Address')}`;
+  }
+
+  if (id === 'O05') {
+    title = 'Medical + Consent (Merged 5/6)';
+    html = `${formInput('allergies','Allergies')}${formInput('medications','Medications')}${formInput('conditions','Conditions')}${formInput('pcp','Primary Care')}
+      <label><input type='checkbox' checked /> I acknowledge Privacy Notice</label><br>
+      <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/privacy/index.html' target='_blank'>Privacy Notice Link</a>
+      <label><input type='checkbox' checked /> I acknowledge Terms</label><br>
+      <a class='link' href='https://www.usa.gov/terms-and-conditions' target='_blank'>Terms Link</a>
+      <label><input type='checkbox' checked /> I acknowledge Sensitive Data policy</label><br>
+      <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html' target='_blank'>Sensitive Data Link</a>
+      <button class='btn' id='completeRegistration'>Complete Registration</button>`;
+  }
+
+  if (id === 'M01') {
+    title = 'Main Emergency Screen';
+    html = `<p class='muted'>Tap to call for help.</p><button class='btn big-call' id='callBtn'>CALL FOR HELP</button>`;
+  }
+
+  if (id === 'M02') {
+    title = 'Smart Router Finding';
+    html = `<p>Care Agent is finding and finalizing route...</p><p class='muted'>Auto-advancing in 2 seconds</p>`;
+  }
+
+  if (id === 'M03') {
+    title = 'Route Found';
+    html = `<p>Hospital: Coastal Neuro Care</p>
+      <p>Ambulance: Unit A-12</p>
+      <p>ETA pickup: 12 min</p>
+      <p>Estimated total: $2,350</p>
+      <button class='btn' id='openMap'>Open Live Map</button>`;
+  }
+
+  if (id === 'M04') {
+    title = 'Live Map + Dispatch Summary';
+    html = `<div class='map'>
+🚑 -----> 🧍 -----> 🏥
+
+Ambulance → Patient: 1.8 mi
+Patient → Hospital: 6.4 mi
+Total ETA: 20 min
+Dispatch ID: CR-2026-0317-001
+Status: En route
+    </div>
+    <button class='btn' id='restart'>Restart Demo</button>`;
+  }
+
+  el('title').textContent = title;
+  el('content').innerHTML = html;
+  bindInputs();
+
+  if (id === 'O01') {
+    el('signIn').onclick = () => { flow = flowSignIn; setStep(1); };
+    el('register').onclick = () => { flow = flowRegister; setStep(1); };
+  }
+  if (id === 'O02') {
+    el('doSignIn').onclick = () => setStep(flow.indexOf('M01'));
+  }
+  if (id === 'O05') {
+    el('completeRegistration').onclick = async () => {
+      await saveRegistration();
+      setStep(flow.indexOf('M01'));
+    };
+  }
+  if (id === 'M01') {
+    el('callBtn').onclick = () => setStep(flow.indexOf('M02'));
+  }
+  if (id === 'M02') {
+    setTimeout(() => {
+      if (flow[step] === 'M02') setStep(flow.indexOf('M03'));
+    }, 2000);
+  }
+  if (id === 'M03') {
+    el('openMap').onclick = () => setStep(flow.indexOf('M04'));
+  }
+  if (id === 'M04') {
+    el('restart').onclick = () => { flow = flowSignIn; setStep(0); };
+  }
+}
+
+el('backBtn').onclick = () => { if (step > 0) setStep(step-1); };
+el('nextBtn').onclick = () => {
+  if (step >= flow.length - 1) {
+    flow = flowSignIn;
+    setStep(0);
+  } else {
+    setStep(step+1);
+  }
+};
+
+render();
+</script>
+</body>
+</html>
