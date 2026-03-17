@@ -27,6 +27,7 @@
       <h2 style="margin:0">CareRoute Prototype</h2>
       <a href="./monitor.html" target="_blank" rel="noopener">Open Live Monitor</a>
     </div>
+    <p class="muted" style="margin:6px 0 0">Build: 2026-03-17-r2</p>
     <p id="mode" class="muted"></p>
 
     <div id="screen" class="card">
@@ -54,7 +55,7 @@ function dbBase() {
 function modeText(){
   if (sameOriginCloudantMode()) return 'Live mode: Cloudant online write/read enabled.';
   if (localBridge) return `Bridge mode: ${localBridge}`;
-  return 'Online mode: cross-site form submit to Cloudant update endpoint + live monitor.';
+  return 'Online mode: direct Cloudant no-cors write + live monitor.';
 }
 
 document.getElementById('mode').textContent = modeText();
@@ -143,28 +144,17 @@ async function saveRegistration(){
     }
 
     // Public online fallback for GitHub Pages:
-    // submit cross-origin form POST to Cloudant update handler (no CORS preflight)
-    const iframe = document.createElement('iframe');
-    iframe.name = 'careroute_post_target';
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
+    // no-cors POST (simple form body) to Cloudant update handler
+    const params = new URLSearchParams();
+    Object.entries(payload).forEach(([k,v]) => params.append(k, String(v ?? '')));
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.target = 'careroute_post_target';
-    form.action = `https://${cloudantHost}/${dbName}/_design/web/_update/register`;
-
-    Object.entries(payload).forEach(([k,v]) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = k;
-      input.value = String(v ?? '');
-      form.appendChild(input);
+    await fetch(`https://${cloudantHost}/${dbName}/_design/web/_update/register`, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: params.toString()
     });
 
-    document.body.appendChild(form);
-    form.submit();
-    setTimeout(() => { form.remove(); iframe.remove(); }, 1200);
     return true;
   } catch (e) {
     alert(`Registration write failed: ${e.message}`);
