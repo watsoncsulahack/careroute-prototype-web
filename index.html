@@ -10,9 +10,13 @@
     .card { background:#252c3b; border-radius:12px; padding:14px; margin:10px 0; }
     .muted { color:#cbd5e1; font-size:13px; }
     .row { display:flex; gap:8px; flex-wrap:wrap; }
-    input, .link { width:100%; padding:10px; margin:4px 0; border-radius:8px; border:1px solid #3f4a61; background:#101520; color:#fff; box-sizing:border-box; }
+    input { width:100%; padding:10px; margin:4px 0; border-radius:8px; border:1px solid #3f4a61; background:#101520; color:#fff; box-sizing:border-box; }
+    .link { display:block; width:100%; padding:10px; margin:6px 0 12px; border-radius:8px; border:1px solid #3f4a61; background:#101520; color:#fff; box-sizing:border-box; text-decoration:underline; }
     .btn { border:0; border-radius:10px; padding:10px 14px; background:#38bdf8; color:#00141f; font-weight:700; cursor:pointer; }
     .btn.secondary { background:#3b465d; color:#fff; }
+    .btn.primaryWide { width:100%; margin-top:10px; font-size:18px; padding:12px 14px; }
+    .consentItem { margin:10px 0 2px; padding:8px 10px; background:#1c2331; border:1px solid #364258; border-radius:10px; }
+    .consentLabel { display:flex; gap:8px; align-items:flex-start; line-height:1.4; }
     .hidden { display:none; }
     .big-call { width:240px; height:240px; border-radius:999px; font-size:26px; display:block; margin:12px auto; background:#ef4444; color:#fff; }
     .map { white-space:pre-line; background:#101520; border:1px dashed #64748b; border-radius:10px; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -27,7 +31,7 @@
       <h2 style="margin:0">CareRoute Prototype</h2>
       <a href="./monitor.html" target="_blank" rel="noopener">Open Live Monitor</a>
     </div>
-    <p class="muted" style="margin:6px 0 0">Build: 2026-03-17-r3</p>
+    <p class="muted" style="margin:6px 0 0">Build: 2026-03-17-r4</p>
     <p id="mode" class="muted"></p>
 
     <div id="screen" class="card">
@@ -198,13 +202,19 @@ function render(){
   if (id === 'O05') {
     title = 'Medical + Consent (Merged 5/6)';
     html = `${formInput('allergies','Allergies')}${formInput('medications','Medications')}${formInput('conditions','Conditions')}${formInput('pcp','Primary Care')}
-      <label><input type='checkbox' checked /> I acknowledge Privacy Notice</label><br>
-      <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/privacy/index.html' target='_blank'>Privacy Notice Link</a>
-      <label><input type='checkbox' checked /> I acknowledge Terms</label><br>
-      <a class='link' href='https://www.usa.gov/terms-and-conditions' target='_blank'>Terms Link</a>
-      <label><input type='checkbox' checked /> I acknowledge Sensitive Data policy</label><br>
-      <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html' target='_blank'>Sensitive Data Link</a>
-      <button class='btn' id='completeRegistration'>Complete Registration</button>`;
+      <div class='consentItem'>
+        <label class='consentLabel'><input type='checkbox' checked /> <span>I acknowledge Privacy Notice</span></label>
+        <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/privacy/index.html' target='_blank'>Privacy Notice Link</a>
+      </div>
+      <div class='consentItem'>
+        <label class='consentLabel'><input type='checkbox' checked /> <span>I acknowledge Terms</span></label>
+        <a class='link' href='https://www.usa.gov/terms-and-conditions' target='_blank'>Terms Link</a>
+      </div>
+      <div class='consentItem'>
+        <label class='consentLabel'><input type='checkbox' checked /> <span>I acknowledge Sensitive Data Policy</span></label>
+        <a class='link' href='https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html' target='_blank'>Sensitive Data Link</a>
+      </div>
+      <button class='btn primaryWide' id='completeRegistration'>Complete Registration</button>`;
   }
 
   if (id === 'M01') {
